@@ -1,0 +1,280 @@
+<!-- public/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Socket.io Example</title>
+  <!-- Add any additional CSS or meta tags here -->
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .content-wrapper {
+      width: 50%;
+      text-align: center;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 15px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+
+    td {
+      cursor: pointer;
+      position: relative;
+    }
+
+    .bet-amount {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 10%;
+        height: 10%;
+        font-size: 0.7em;
+    }
+
+    #error-msg {
+        color: red;
+    }
+
+    #log {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: 200px;
+        background-color: #dedede;
+    }
+
+    .highlight {
+        background-color: red;
+    }
+
+  </style>
+
+
+</head>
+<body>
+  <div class="content-wrapper">
+    <h3>Hello, <span id="username">guest</span>!</h3>
+    <p>Your balance is: <span id="balance">0</span></p>
+    <p>Total bets this round: <span id="totalBets">0</span></p>
+
+    <table>
+      <tbody id="roulette">
+        <tr id="zero-row">
+        </tr>
+      </tbody>
+
+      <tfoot>
+        <tr>
+            <td colspan="2">Current bet:
+                <input type="number" id="betInput" value="1" step="1" min="1" max="10000" />
+            </td>
+            <td>
+                <button id="clearBets">Clear Bets!</button>
+            </td>
+        </tr>
+
+        <tr>
+            <td colspan="3" id="error-msg"></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div id="log">
+
+    </div>
+  </div>
+
+  <!-- Include Socket.io client library -->
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js" integrity="sha384-Gr6Lu2Ajx28mzwyVR8CFkULdCU7kMlZ9UthllibdOSo6qAiN+yXNHqtgdTvFXMT4" crossorigin="anonymous"></script>
+  <script>
+    const socket = io();
+
+    let bettingData = {
+        balance: 0,
+        totalBets: 0,
+        currentBet: 1,
+        canBet: false,
+    };
+
+    socket.emit('newPlayer', {});
+
+    socket.on('updateUserData', (data) => {
+      updateUserInfo(data);
+    });
+
+    socket.on('updateRoundTime', (data) => {
+        log(`Time left: ${data.time}s`, true);
+        
+        // very important because somebody might come late for the round
+        bettingData.canBet = true;
+
+    });
+
+    socket.on('noMoreBets', () => {
+        log('No more bets!');
+        bettingData.canBet = false;
+
+        socket.emit('sendBets', {
+            bets: getMyBets(),
+            balance: bettingData.balance,
+        });
+    });
+
+    socket.on('winningNumber', (data) => {
+        log(data.message);
+        highlightCell(data.winningNumber);
+    });
+
+    socket.on('newBettingRound', () => {
+        log('Please your bets!');
+        bettingData.canBet = true;
+        handleClearBets();
+    });
+
+    socket.on('updateBalance', (balance) => {
+        log(`Your new balance is ${balance}. New game will start shortly...`);
+
+        updateBalance(balance);
+        
+    });
+
+    function highlightCell(i) {
+        let el = document.getElementById(`cell-${i}`);
+        el.classList.add('highlight');
+    }
+
+    function updateBalance(balance) {
+      document.getElementById('balance').innerHTML = balance;
+      bettingData.balance = balance;
+    }
+
+    function updateUserInfo(data) {
+      document.getElementById('username').innerHTML = data.username;
+      updateBalance(data.balance);
+    }
+
+    function getMyBets() {
+        let bets = new Array(37), html;
+
+        for (let i = 0; i <= 36; i++) {
+            html = document.getElementById(`bet-${i}`).innerHTML;
+
+            bets[i] = html ? parseInt(html, 10) : 0;
+        }
+
+        return bets;
+    }
+
+    function buildRoulette() {
+      let html = '';
+      for (let i = 1; i <= 36; i++) {
+
+        if ((i - 1) % 3 === 0) {
+          html += '<tr>';
+        }
+
+        html += createRouletteCell(i);
+
+        if (i % 3 === 0) {
+          html += '</tr>';
+        }
+      }
+
+      document.getElementById('roulette').innerHTML += html;
+    }
+
+    function createRouletteCell(i, colspan=0) {
+        let colspanHTML = colspan ? ` colspan=${colspan}` : '';
+
+        return `<td id="cell-${i}"${colspanHTML} onclick="handleCellClick(${i})">${i}
+            <span class="bet-amount" id="bet-${i}"></span>
+            </td>`;
+    }
+
+    function handleBetSizeChange(e) {
+        bettingData.currentBet = parseInt(e.target.value, 10);
+    }
+
+    function handleClearBets() {
+        bettingData.totalBets = 0;
+
+        for (let i = 0; i <= 36; i++) {
+            document.getElementById(`bet-${i}`).innerHTML = '';
+            document.getElementById(`cell-${i}`).classList.remove('highlight');
+        }
+
+        updateTotalBets();
+    }
+
+    function updateTotalBets() {
+        document.getElementById('totalBets').innerHTML = bettingData.totalBets;
+    }
+
+    function handleCellClick(i) {
+        if (!bettingData.canBet) {
+            setError('Cannot bet at the moment!');
+            return;
+        }
+
+        let el = document.getElementById(`bet-${i}`);
+        let currentBetInNumber = parseInt(el.innerHTML, 10);
+
+        if (bettingData.totalBets + bettingData.currentBet > bettingData.balance) {
+            setError('insufficient amount!');
+            return;
+        }
+
+        bettingData.totalBets += bettingData.currentBet;
+
+        updateTotalBets();
+
+        el.innerHTML = (currentBetInNumber ? currentBetInNumber : 0) + bettingData.currentBet;
+    }
+
+    function log(message, update=false) {
+        document.getElementById('log').innerHTML = message;
+    }
+
+    function setError(message) {
+        document.getElementById('error-msg').innerHTML = message;
+        setTimeout(() => setError(''), 5000);
+    }
+
+    function setup() {
+        document.getElementById('zero-row').innerHTML = createRouletteCell(0, 3);
+        buildRoulette();
+
+        document.getElementById('betInput').addEventListener('change', handleBetSizeChange);
+        document.getElementById('clearBets').addEventListener('click', handleClearBets);
+    }
+
+    setup();
+
+  </script>
+</body>
+</html>
