@@ -18,7 +18,7 @@ const game = new Roulette({
   drawingDuration: 3,
 });
 
-let balanceQueue = [];
+let balancesQueue = [];
 let interval;
 
 game.onStateChange = function() {
@@ -57,11 +57,11 @@ game.onStateChange = function() {
 }
 
 function handleBalanceQueue() {
-  balanceQueue.forEach(item => {
+  balancesQueue.forEach(item => {
     item.socket.emit('updateBalance', item.balance);
   })
 
-  balanceQueue = [];
+  balancesQueue = [];
 }
 
 function handleDrawingFinish() {
@@ -94,7 +94,7 @@ io.on('connection', (socket) => {
   
     // Send back player's balance in settlement state
 
-    balanceQueue.push({
+    balancesQueue.push({
       socket,
       balance,
     });
